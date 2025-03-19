@@ -1,6 +1,6 @@
 # DaVinci Resolve MCP Server
 
-A Model Context Protocol (MCP) server that enables AI assistants like Claude to interact with DaVinci Resolve.
+A Model Context Protocol (MCP) server that enables AI assistants like Claude to interact with DaVinci Resolve Studio.
 
 ## Overview
 
@@ -15,7 +15,7 @@ This server implements the MCP protocol to create a bridge between AI assistants
 
 ## Requirements
 
-- DaVinci Resolve 18.0 or newer
+- DaVinci Resolve Studio 18.0 or newer
 - Python 3.10 or newer
 - Access to the DaVinci Resolve scripting API
 
