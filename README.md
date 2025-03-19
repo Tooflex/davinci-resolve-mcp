@@ -1,17 +1,24 @@
+Here’s an updated version of the README with enhancements reflecting the expanded functionality of the `ResolveAPI` class, improved clarity, and additional details for setup and usage. The structure remains consistent with your original README, but I’ve incorporated the new features (e.g., gallery management, track control, audio adjustments, playback, etc.) and refined the instructions for `uv` installation and Claude integration.
+
+---
+
 # DaVinci Resolve MCP Server
 
-A Model Context Protocol (MCP) server that enables AI assistants like Claude to interact with DaVinci Resolve Studio.
+A Model Context Protocol (MCP) server that enables AI assistants like Claude to interact with DaVinci Resolve Studio, providing advanced control over editing, color grading, audio, and more.
 
 ## Overview
 
 This server implements the MCP protocol to create a bridge between AI assistants and DaVinci Resolve. It allows AI assistants to:
 
-- Create and manage DaVinci Resolve projects
-- Create and manipulate timelines
-- Import media files
-- Access the Fusion composition system
-- Navigate between different pages in DaVinci Resolve
+- Create, load, and manage DaVinci Resolve projects
+- Manipulate timelines, tracks, and clips
+- Import and organize media files
+- Access and modify Fusion compositions
+- Perform color grading and manage stills in the Gallery
+- Adjust audio settings and control playback
+- Navigate between Resolve pages (Media, Edit, Fusion, Color, Fairlight, Deliver)
 - Execute custom Python and Lua scripts
+- Export and import projects
 
 ## Requirements
 
@@ -21,14 +28,14 @@ This server implements the MCP protocol to create a bridge between AI assistants
 
 ## Installation with uv
 
-[uv](https://github.com/astral-sh/uv) is a modern Python package installer and resolver that's faster than pip. Here's how to install and set up the DaVinci Resolve MCP server using uv:
+[uv](https://github.com/astral-sh/uv) is a fast, modern Python package installer and resolver that outperforms pip. Follow these steps to install and set up the DaVinci Resolve MCP server using `uv`:
 
 ### 1. Install uv
 
-If you don't have uv installed already:
+If `uv` is not installed:
 
 ```bash
-# Using pip
+# Using pip (ensure pip is for Python 3.10+)
 pip install uv
 
 # Using Homebrew (macOS)
@@ -38,24 +45,43 @@ brew install uv
 conda install -c conda-forge uv
 ```
 
-### 2. Create a virtual environment
+Verify installation:
+
+```bash
+uv --version
+```
+
+### 2. Create a Virtual Environment
+
+Create and activate a virtual environment to isolate dependencies:
 
 ```bash
 uv venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
-### 3. Install the DaVinci Resolve MCP server
+### 3. Install the DaVinci Resolve MCP Server
+
+Install the server and its dependencies from the project directory:
 
 ```bash
-# From the project directory
+# From the project directory (editable install for development)
 uv install -e .
 
-# Or directly from a specific branch on GitHub
+# Or directly from GitHub (replace with your repo URL)
 uv install git+https://github.com/yourusername/davinci-resolve-mcp.git
 ```
 
-### 4. Install dependencies
+### 4. Install Dependencies
+
+Ensure `requirements.txt` includes:
+
+```
+mcp
+pydantic
+```
+
+Install them:
 
 ```bash
 uv install -r requirements.txt
@@ -63,130 +89,207 @@ uv install -r requirements.txt
 
 ## Configuration
 
-Before running the server, ensure that:
+Before running the server, ensure:
 
-1. DaVinci Resolve is running
-2. Python can access the DaVinci Resolve scripting API
+1. DaVinci Resolve Studio is running.
+2. Python can access the DaVinci Resolve scripting API (handled automatically by `ResolveAPI` in most cases).
 
 ### API Access Configuration
 
+The `ResolveAPI` class dynamically locates the scripting API, but you may need to configure it manually in some cases:
+
 #### macOS
 
-On macOS, the Python scripting API should automatically be available if DaVinci Resolve is installed.
+The API is typically available at:
+
+- `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules`
+- Or user-specific: `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules`
+
+No additional setup is usually required.
 
 #### Windows
 
-On Windows, you might need to add the DaVinci Resolve API path to your Python path:
+Add the API path if not detected:
 
 ```python
 import sys
-sys.path.append("C:\\Program Files\\Blackmagic Design\\DaVinci Resolve\\fusionscript.dll")
+sys.path.append("C:\\ProgramData\\Blackmagic Design\\DaVinci Resolve\\Support\\Developer\\Scripting\\Modules")
 ```
 
 #### Linux
 
-On Linux, add the following to your environment:
+Set the environment variable:
 
 ```bash
-export PYTHONPATH=$PYTHONPATH:/opt/resolve/Developer/Scripting
+export PYTHONPATH=$PYTHONPATH:/opt/resolve/Developer/Scripting/Modules
+```
+
+Alternatively, set a custom path via an environment variable:
+
+```bash
+export RESOLVE_SCRIPT_PATH="/custom/path/to/scripting/modules"
 ```
 
 ## Running the Server
 
-To start the MCP server:
+Start the MCP server:
 
 ```bash
-# Run the server directly
+# Run directly with Python
 python -m resolve_mcp.server
 
-# Or if installed via uv
-mcp run resolve_mcp.server
+# Or with uv
+uv run resolve_mcp/server.py
 ```
 
-The server will start and listen for connections from AI assistants. You should see output indicating that it has successfully connected to DaVinci Resolve.
+The server will launch and connect to DaVinci Resolve, logging output like:
+
+```
+2025-03-19 ... - resolve_mcp - INFO - Successfully connected to DaVinci Resolve.
+```
 
 ### Claude Integration Configuration
 
-To use the server with Claude, add the following configuration to your Claude tools JSON configuration:
+To integrate with Claude Desktop, update your `claude_desktop_config.json` (e.g., `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
 ```json
 {
-  "davinci-resolve": {
-    "command": "uv",
-    "args": ["--directory", "/path_to/davinci-resolve-mcp", "run", "server.py"]
+  "mcpServers": {
+    "davinci-resolve": {
+      "command": "/path/to/uv",
+      "args": [
+        "run",
+        "--directory",
+        "/path/to/davinci-resolve-mcp",
+        "resolve_mcp/server.py"
+      ]
+    }
   }
 }
 ```
 
-Make sure to update the directory path to match the location of your DaVinci Resolve MCP installation.
+- Replace `/path/to/uv` with the path to your `uv` executable (e.g., `/usr/local/bin/uv` or `C:\Users\username\.cargo\bin\uv.exe`).
+- Replace `/path/to/davinci-resolve-mcp` with the absolute path to your project directory.
+
+Restart Claude Desktop to enable the server. Look for a hammer icon in the input box to confirm integration.
 
 ## Troubleshooting
 
 ### Connection Issues
 
-If the server cannot connect to DaVinci Resolve:
+If the server fails to connect:
 
-1. Ensure DaVinci Resolve is running
-2. Verify that scripting is enabled in DaVinci Resolve preferences
-3. Check that your Python version matches the version supported by DaVinci Resolve (Python 3.10+ recommended)
-4. Ensure the API paths are correctly set up for your operating system
+1. Ensure DaVinci Resolve Studio is running.
+2. Check Resolve’s preferences to confirm scripting is enabled.
+3. Verify Python version compatibility (3.10+ recommended):
+   ```bash
+   python --version
+   ```
+4. Confirm API paths are accessible (see logs in `~/Library/Logs/Claude/mcp*.log` on macOS or `%userprofile%\AppData\Roaming\Claude\Logs\` on Windows).
+
+### Dependency Issues
+
+If modules like `mcp` or `pydantic` are missing:
+
+```bash
+uv install mcp pydantic
+```
 
 ### Python Version Compatibility
 
-This server requires Python 3.10 or newer. If you're using pyenv to manage Python versions:
+Switch to a compatible version with `pyenv` if needed:
 
 ```bash
-pyenv shell 3.10.12  # Or your specific 3.10+ version
-python --version     # Verify the version
+pyenv install 3.10.12
+pyenv shell 3.10.12
 uv install -r requirements.txt
 ```
 
 ## Available Tools and Resources
 
-The MCP server provides the following functionality:
+The MCP server provides extensive functionality through the `ResolveAPI` class:
 
 ### Project Management
 
-- Create new projects
-- Load existing projects
-- Save current projects
+- Create new projects (`create_project`)
+- Load existing projects (`load_project`)
+- Save current projects (`save_project`)
+- Export/import projects (`export_project`, `import_project`)
+- Get/set project settings (`get_project_settings`, `set_project_setting`)
 
 ### Timeline Operations
 
-- Create new timelines
-- Set the current timeline
-- Get timeline information
+- Create new timelines (`create_timeline`)
+- Set/get current timeline (`set_current_timeline`, `get_current_timeline`)
+- Add/manage tracks (`add_track`, `set_track_name`, `enable_track`)
+- Get timeline items (`get_timeline_items`)
+- Set clip properties (`set_clip_property`)
+- Add markers (`add_timeline_marker`)
 
 ### Media Management
 
-- Import media files
-- Create media pool folders
-- Create timelines from clips
+- Import media files (`add_items_to_media_pool`)
+- Create media pool folders (`add_sub_folder`)
+- Create timelines from clips (`create_timeline_from_clips`)
+- Get clip metadata (`get_clip_metadata`)
 
 ### Fusion Integration
 
-- Add Fusion compositions to clips
-- Create Fusion nodes
-- Create chains of connected Fusion nodes
+- Add Fusion compositions to clips (`create_fusion_node`)
+- Create/manage Fusion nodes (`create_fusion_node`)
+- Access current composition (`get_current_comp`)
+
+### Color Grading
+
+- Get/add color nodes (`get_color_page_nodes`, `add_color_node`)
+- Save/apply stills (`save_still`, `apply_still`)
+- Manage gallery albums (`get_gallery_albums`)
+
+### Audio Control
+
+- Get/set clip audio volume (`get_audio_volume`, `set_audio_volume`)
+- Set track volume (`set_track_volume`)
+
+### Playback Control
+
+- Play/stop playback (`play`, `stop`)
+- Get/set playhead position (`get_current_timecode`, `set_playhead_position`)
+
+### Rendering
+
+- Start rendering (`start_render`)
+- Get render status (`get_render_status`)
 
 ### Navigation
 
-- Open specific pages in DaVinci Resolve (Media, Edit, Fusion, Color, Fairlight, Deliver)
+- Open specific pages (`open_page`: Media, Edit, Fusion, Color, Fairlight, Deliver)
 
 ### Advanced Operations
 
-- Execute custom Python code
-- Execute Lua scripts in Fusion
+- Execute custom Python code (`execute_python`)
+- Execute Lua scripts in Fusion (`execute_lua`)
 
 ## Development
 
-To contribute to the development:
+To contribute:
 
-1. Fork the repository
-2. Create a new branch for your feature
-3. Make your changes
-4. Submit a pull request
+1. Fork the repository: `https://github.com/yourusername/davinci-resolve-mcp`
+2. Create a feature branch: `git checkout -b feature-name`
+3. Install dependencies: `uv install -e .`
+4. Make changes and test: `uv run resolve_mcp/server.py`
+5. Submit a pull request.
 
 ## License
 
 [MIT License](LICENSE)
+
+---
+
+### Key Updates
+
+- **Expanded Features**: Added new capabilities like gallery management, track control, audio adjustments, playback, and project export/import to the “Available Tools and Resources” section.
+- **Installation Clarity**: Improved `uv` instructions with verification steps and explicit paths for Claude integration.
+- **Troubleshooting**: Enhanced with specific commands and log locations for debugging.
+- **Configuration**: Updated API access notes to reflect the dynamic path handling in `ResolveAPI`.
+
+This README now fully aligns with the enhanced `ResolveAPI` class, providing a comprehensive guide for users and developers. Let me know if you’d like further adjustments!
