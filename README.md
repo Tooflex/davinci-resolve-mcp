@@ -113,12 +113,7 @@ To use the server with Claude, add the following configuration to your Claude to
 {
   "davinci-resolve": {
     "command": "uv",
-    "args": [
-      "--directory",
-      "/Users/tooflex/Dev/davinci-resolve-mcp",
-      "run",
-      "server.py"
-    ]
+    "args": ["--directory", "/path_to/davinci-resolve-mcp", "run", "server.py"]
   }
 }
 ```
