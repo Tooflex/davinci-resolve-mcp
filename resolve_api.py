@@ -66,6 +66,19 @@ class ResolveAPI:
         if not script_path:
             logger.error("No valid Resolve scripting module path found")
             return
+        # Loading Resolve's fusionscript library can hard-crash the interpreter
+        # (uncatchable access violation) when external scripting is unavailable --
+        # notably the free edition, which restricts external scripting to Studio.
+        # Probe it in a subprocess first so we degrade gracefully instead of dying.
+        import resolve_env
+        if not resolve_env.scripting_safe_to_import():
+            logger.error(
+                "DaVinci Resolve scripting could not be initialized. External "
+                "scripting requires DaVinci Resolve Studio; the free edition does "
+                "not support it. Continuing without a Resolve connection."
+            )
+            self.resolve = None
+            return
         try:
             import DaVinciResolveScript as dvr_script  # Import the Resolve scripting API
             self.resolve = dvr_script.scriptapp("Resolve")  # Connect to Resolve app

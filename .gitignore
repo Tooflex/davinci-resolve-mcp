@@ -15,8 +15,10 @@ env/
 ENV/
 .env/
 .venv/
+.venv310/
 env.bak/
 venv.bak/
+.python-version
 
 # UV specific
 .uv/
