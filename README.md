@@ -117,17 +117,28 @@ External scripting is a **Studio-only** feature. On the free edition the scripti
 cannot be initialized from an external process, and the server will run in a disconnected
 state. There is no software workaround — Studio is required.
 
-### The process crashes on startup (access violation) when run *without* the launcher
+### The process crashes on startup (access violation `0xC0000005`)
 
-Resolve's `fusionscript.dll` binds to the first `python3.dll` it finds. If another Python
-is on your `PATH` — commonly **Anaconda** (`python312.dll`) or a **python.org 3.13** — that
-foreign runtime gets loaded into the 3.10 interpreter and the process dies with an access
-violation (`0xC0000005`).
+Resolve's `fusionscript.dll` loads a Python 3 runtime when the scripting module is
+imported. It chooses which one from the `FUSION_PYTHON3_HOME` environment variable and,
+**if that is unset, from the Windows registry** (`HKCU`/`HKLM\SOFTWARE\Python\PythonCore`).
+On a machine with several Pythons registered — commonly **Anaconda** (`python312.dll`) or a
+**python.org 3.13** — that fallback picks a *foreign* runtime, loads it into the 3.10
+interpreter, and the process dies with an access violation.
 
-Always launch via `run_server.ps1`, which isolates `PATH`. If you invoke `server.py`
-directly, make sure Anaconda / other Python installs are not ahead of your 3.10 on `PATH`.
-`resolve_env.py` mitigates this by preloading the correct `python3.dll` and by probing the
-scripting import in a subprocess so a crash there cannot take down the server.
+The fix is to set `FUSION_PYTHON3_HOME` to this project's Python 3.10. Both `run_server.ps1`
+and `resolve_env.py` do this for you (and additionally preload the correct `python3.dll` and
+probe the scripting import in a subprocess so a crash there cannot take down the server), so
+**always launch via `run_server.ps1`**. Note that `PATH` isolation alone is *not* enough —
+the registry fallback bypasses `PATH` — which is why `FUSION_PYTHON3_HOME` is required.
+
+### It loads but says `scriptapp('Resolve') returned None`
+
+The scripting module imported successfully but no live Resolve object was returned. Either
+Resolve isn't running, or external scripting is disabled. In Resolve, open
+**Preferences → System → General** and set **"External scripting using"** to **Local**, then
+restart Resolve. Remember that external scripting also **requires DaVinci Resolve Studio** —
+on the free edition this will remain `None`.
 
 ### `import imp` / `ModuleNotFoundError` at startup
 

@@ -3,17 +3,20 @@ Environment bootstrap for connecting to DaVinci Resolve's scripting API.
 
 Why this module exists
 ----------------------
-Resolve's ``fusionscript`` native library exports its Python entry points against
-the version-agnostic ``python3.dll`` forwarder (Windows). If *another* Python's
-``python3.dll`` is found on the DLL search path first -- e.g. an Anaconda 3.12 or
-a python.org 3.13 install -- that foreign runtime gets loaded into this
-interpreter and the process dies with an access violation (0xC0000005) the moment
+Resolve's ``fusionscript`` native library loads a Python 3 runtime at import time
+to expose its scripting API. To decide *which* Python, it reads the environment
+variable ``FUSION_PYTHON3_HOME`` and, only if that is unset, falls back to the
+Windows registry (``HKCU``/``HKLM\SOFTWARE\Python\PythonCore``). On a machine with
+several Pythons registered (e.g. an Anaconda 3.12), that fallback can pick a
+*foreign* runtime and load its ``python3xx.dll`` into this 3.10 process, which
+hard-crashes with an access violation (0xC0000005) the moment
 ``DaVinciResolveScript`` imports the library.
 
-Preloading *this* interpreter's own ``python3.dll`` makes ``fusionscript`` bind to
-the correct runtime. We also register the scripting module + library locations via
-the ``RESOLVE_SCRIPT_*`` variables that Blackmagic's ``DaVinciResolveScript.py``
-looks for.
+The fix is to set ``FUSION_PYTHON3_HOME`` to *this* interpreter's home so
+``fusionscript`` binds to our own runtime. We additionally preload our
+``python3.dll`` as belt-and-braces, and register the scripting module + library
+locations via the ``RESOLVE_SCRIPT_*`` variables that Blackmagic's
+``DaVinciResolveScript.py`` looks for.
 
 Importing this module runs the bootstrap automatically. Import it *before*
 anything that pulls in ``DaVinciResolveScript`` / ``resolve_api``.
@@ -67,6 +70,15 @@ def _set_env_defaults() -> None:
     modules = os.path.join(api, "Modules")
     os.environ.setdefault("RESOLVE_SCRIPT_API", api)
     os.environ.setdefault("RESOLVE_SCRIPT_LIB", _script_lib())
+    # Tell Resolve's fusionscript which Python 3 runtime to bind to. Without this
+    # it falls back to the Windows registry (HKCU/HKLM\SOFTWARE\Python\PythonCore)
+    # and can pick a *foreign* interpreter -- e.g. an Anaconda 3.12 -- loading that
+    # runtime's python3xx.dll into this 3.10 process and hard-crashing it with an
+    # access violation (0xC0000005). Pin it to THIS interpreter's home so it binds
+    # to our own python3.dll/python310.dll instead. sys.base_prefix is the real
+    # install dir (venvs point here) that holds the python3xx.dll.
+    if sys.platform == "win32":
+        os.environ["FUSION_PYTHON3_HOME"] = sys.base_prefix
     # Propagate the Modules dir to child processes via PYTHONPATH (used by the
     # safety probe below). We deliberately do NOT touch this process's sys.path --
     # resolve_api._find_scripting_module() adds it itself and only returns a path

@@ -52,9 +52,10 @@ class ResolveAPI:
         system = platform.system()  # Get current OS
         paths = base_paths.get(system, []) if system != "Darwin" else base_paths["Darwin"]
         for path in ([paths] if isinstance(paths, str) else paths):  # Handle single path or list
-            if os.path.exists(path) and path not in sys.path:
-                sys.path.append(path)  # Add to Python path if not already present
-                return path
+            if os.path.exists(path):
+                if path not in sys.path:
+                    sys.path.append(path)  # Add to Python path if not already present
+                return path  # Return whether or not it was already on sys.path
         return None  # Return None if no valid path is found
 
     def _connect_to_resolve(self) -> None:
@@ -82,7 +83,19 @@ class ResolveAPI:
         try:
             import DaVinciResolveScript as dvr_script  # Import the Resolve scripting API
             self.resolve = dvr_script.scriptapp("Resolve")  # Connect to Resolve app
-            logger.info(f"Connected to Resolve using {script_path}")
+            if self.resolve:
+                logger.info(f"Connected to Resolve using {script_path}")
+            else:
+                # Module loaded, but no live app object. Resolve isn't running, or
+                # external scripting is disabled/unavailable (Preferences > System >
+                # General > "External scripting using" must be Local; external
+                # scripting also requires DaVinci Resolve Studio).
+                logger.error(
+                    "Loaded the Resolve scripting module but scriptapp('Resolve') "
+                    "returned None -- Resolve is not running, or external scripting "
+                    "is disabled (set Preferences > System > General > 'External "
+                    "scripting using' to Local; requires DaVinci Resolve Studio)."
+                )
         except ImportError:
             logger.error(f"Failed to import DaVinciResolveScript from {script_path}")
             self.resolve = None
