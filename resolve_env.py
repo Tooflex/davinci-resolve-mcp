@@ -1,0 +1,169 @@
+"""
+Environment bootstrap for connecting to DaVinci Resolve's scripting API.
+
+Why this module exists
+----------------------
+Resolve's ``fusionscript`` native library loads a Python 3 runtime at import time
+to expose its scripting API. To decide *which* Python, it reads the environment
+variable ``FUSION_PYTHON3_HOME`` and, only if that is unset, falls back to the
+Windows registry (``HKCU``/``HKLM\\SOFTWARE\\Python\\PythonCore``). On a machine with
+several Pythons registered (e.g. an Anaconda 3.12), that fallback can pick a
+*foreign* runtime and load its ``python3xx.dll`` into this 3.10 process, which
+hard-crashes with an access violation (0xC0000005) the moment
+``DaVinciResolveScript`` imports the library.
+
+The fix is to set ``FUSION_PYTHON3_HOME`` to *this* interpreter's home so
+``fusionscript`` binds to our own runtime. We additionally preload our
+``python3.dll`` as belt-and-braces, and register the scripting module + library
+locations via the ``RESOLVE_SCRIPT_*`` variables that Blackmagic's
+``DaVinciResolveScript.py`` looks for.
+
+Importing this module runs the bootstrap automatically. Import it *before*
+anything that pulls in ``DaVinciResolveScript`` / ``resolve_api``.
+"""
+
+import os
+import subprocess
+import sys
+from typing import Optional
+
+# Cache for the one-time "is it safe to import the scripting module?" probe.
+_safe_to_import = None
+
+
+def _resolve_program_dir() -> str:
+    """Directory of the Resolve application (holds fusionscript.dll on Windows)."""
+    if sys.platform == "win32":
+        return os.path.join(
+            os.environ.get("PROGRAMFILES", r"C:\Program Files"),
+            "Blackmagic Design", "DaVinci Resolve",
+        )
+    if sys.platform == "darwin":
+        return "/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/Libraries/Fusion"
+    return "/opt/resolve/libs/Fusion"
+
+
+def _scripting_dir() -> str:
+    """Root of the Developer/Scripting package that ships the import modules."""
+    if sys.platform == "win32":
+        return os.path.join(
+            os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+            "Blackmagic Design", "DaVinci Resolve",
+            "Support", "Developer", "Scripting",
+        )
+    if sys.platform == "darwin":
+        return "/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting"
+    return "/opt/resolve/Developer/Scripting"
+
+
+def _script_lib() -> str:
+    """Absolute path to the fusionscript native library for this platform."""
+    if sys.platform == "win32":
+        return os.path.join(_resolve_program_dir(), "fusionscript.dll")
+    if sys.platform == "darwin":
+        return os.path.join(_resolve_program_dir(), "fusionscript.so")
+    return os.path.join(_resolve_program_dir(), "fusionscript.so")
+
+
+def _set_env_defaults() -> None:
+    """Point DaVinciResolveScript.py at the API/library and add Modules to sys.path."""
+    api = _scripting_dir()
+    modules = os.path.join(api, "Modules")
+    os.environ.setdefault("RESOLVE_SCRIPT_API", api)
+    os.environ.setdefault("RESOLVE_SCRIPT_LIB", _script_lib())
+    # Tell Resolve's fusionscript which Python 3 runtime to bind to. Without this
+    # it falls back to the Windows registry (HKCU/HKLM\SOFTWARE\Python\PythonCore)
+    # and can pick a *foreign* interpreter -- e.g. an Anaconda 3.12 -- loading that
+    # runtime's python3xx.dll into this 3.10 process and hard-crashing it with an
+    # access violation (0xC0000005). Pin it to THIS interpreter's home so it binds
+    # to our own python3.dll/python310.dll instead. sys.base_prefix is the real
+    # install dir (venvs point here) that holds the python3xx.dll.
+    if sys.platform == "win32":
+        os.environ["FUSION_PYTHON3_HOME"] = sys.base_prefix
+    # Propagate the Modules dir to child processes via PYTHONPATH (used by the
+    # safety probe below). We deliberately do NOT touch this process's sys.path --
+    # resolve_api._find_scripting_module() adds it itself and only returns a path
+    # when it is not already present, so pre-inserting it would break detection.
+    existing = os.environ.get("PYTHONPATH", "")
+    if modules not in existing.split(os.pathsep):
+        os.environ["PYTHONPATH"] = os.pathsep.join(p for p in (modules, existing) if p)
+
+
+def _preload_matching_python_dll() -> None:
+    """
+    Force Resolve's fusionscript to bind to THIS interpreter's runtime by loading
+    our own ``python3.dll`` first. No-op off Windows, where the .so is resolved by
+    absolute path and there is no forwarder ambiguity.
+    """
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    py3 = os.path.join(sys.base_prefix, "python3.dll")
+    if os.path.exists(py3):
+        try:
+            ctypes.WinDLL(py3)
+        except OSError:
+            pass
+    # Prefer our interpreter dir and the Resolve program dir for DLL resolution.
+    for d in (sys.base_prefix, _resolve_program_dir()):
+        if d and os.path.isdir(d):
+            try:
+                os.add_dll_directory(d)
+            except OSError:
+                pass
+
+
+def scripting_safe_to_import(module_path: Optional[str] = None) -> bool:
+    """
+    Return True if importing ``DaVinciResolveScript`` in *this* process is safe.
+
+    Loading fusionscript can hard-crash the interpreter (uncatchable access
+    violation) on setups where external scripting is unavailable -- most notably
+    the free edition of DaVinci Resolve, which gates external scripting to Studio.
+    We can't catch a native crash, so we reproduce the import in a throwaway
+    subprocess and treat a crash there as "not safe".
+
+    ``module_path`` is the directory selected by ``ResolveAPI``. Passing it to the
+    child is required for macOS user-local installations and
+    ``RESOLVE_SCRIPT_PATH`` overrides, which may not be present in the inherited
+    ``PYTHONPATH``.
+
+    Exit-code contract of the probe:
+        0  -> imported and scriptapp() returned a live object (connected)
+        10 -> imported cleanly but scriptapp() returned None (Studio, app closed)
+        anything else / no exit -> the import crashed; do not attempt in-process
+    """
+    global _safe_to_import
+    if _safe_to_import is not None:
+        return _safe_to_import
+
+    probe = (
+        "import resolve_env, sys\n"
+        "import DaVinciResolveScript as d\n"
+        "sys.exit(0 if d.scriptapp('Resolve') else 10)\n"
+    )
+    env = os.environ.copy()
+    # Ensure the child can import this module and the exact Modules dir selected
+    # by ResolveAPI. The latter may be a macOS user-local or custom path.
+    here = os.path.dirname(os.path.abspath(__file__))
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in (here, module_path, env.get("PYTHONPATH", "")) if p
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=here,
+            env=env,
+            capture_output=True,
+            timeout=60,
+        )
+        _safe_to_import = result.returncode in (0, 10)
+    except (subprocess.TimeoutExpired, OSError):
+        _safe_to_import = False
+    return _safe_to_import
+
+
+# Run the bootstrap on import.
+_preload_matching_python_dll()
+_set_env_defaults()

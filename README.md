@@ -1,7 +1,3 @@
-Here’s an updated version of the README with enhancements reflecting the expanded functionality of the `ResolveAPI` class, improved clarity, and additional details for setup and usage. The structure remains consistent with your original README, but I’ve incorporated the new features (e.g., gallery management, track control, audio adjustments, playback, etc.) and refined the instructions for `uv` installation and Claude integration.
-
----
-
 # DaVinci Resolve MCP Server
 
 A Model Context Protocol (MCP) server that enables AI assistants like Claude to interact with DaVinci Resolve Studio, providing advanced control over editing, color grading, audio, and more.
@@ -22,187 +18,167 @@ This server implements the MCP protocol to create a bridge between AI assistants
 
 ## Requirements
 
-- DaVinci Resolve Studio 18.0 or newer
-- Python 3.10 or newer
-- Access to the DaVinci Resolve scripting API
+- **DaVinci Resolve _Studio_ 18.0 or newer.** External scripting (which this server
+  relies on) is a Studio-only feature. The **free** edition does not expose the
+  external scripting API — the server will start but report that it cannot connect.
+- **A regular python.org Python 3.10 or 3.11 (64-bit).** Resolve's scripting module
+  does `import imp`, which was removed in Python 3.12, so **3.12+ will not work**.
+  Do **not** use `uv`-managed Python: its standalone builds crash when loading
+  Resolve's native `fusionscript.dll`. See [Setup](#setup-windows) below.
+- Access to the DaVinci Resolve scripting API (installed with Resolve).
 
-## Installation with uv
+## Setup (Windows)
 
-[uv](https://github.com/astral-sh/uv) is a fast, modern Python package installer and resolver that outperforms pip. Follow these steps to install and set up the DaVinci Resolve MCP server using `uv`:
+> **Why not `uv`?** Two reasons: `uv` defaults to Python 3.13 (fails on `import imp`),
+> and even when pinned to 3.10/3.11 its *standalone* Python build crashes when Resolve's
+> native `fusionscript.dll` is loaded. Use a normal python.org install with a plain venv.
 
-### 1. Install uv
+### 1. Install a compatible Python
 
-If `uv` is not installed:
+Install **python.org Python 3.10 (64-bit)** — for example with winget:
+
+```powershell
+winget install --id Python.Python.3.10 -e
+```
+
+### 2. Create the virtual environment and install dependencies
+
+From the project directory, create the venv with that interpreter (this repo uses
+`.venv310`) and install the dependencies:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe" -m venv .venv310
+.\.venv310\Scripts\python.exe -m pip install --upgrade pip
+.\.venv310\Scripts\python.exe -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
+```
+
+### 3. Run the server
+
+Use the provided launcher, which sets up a clean environment for you:
+
+```powershell
+.\run_server.ps1
+```
+
+`run_server.ps1` builds a minimal `PATH` (exposing only this project's Python 3.10 plus
+the Windows system directories) and sets the `RESOLVE_SCRIPT_API` / `RESOLVE_SCRIPT_LIB`
+variables. `resolve_env.py` additionally preloads the matching `python3.dll` from inside
+the process. Both are needed to avoid the DLL conflict described in
+[Troubleshooting](#troubleshooting).
+
+On DaVinci Resolve **Studio** (running), you should see:
+
+```
+... - ResolveAPI - INFO - Connected to Resolve using ...
+... - resolve_mcp - INFO - Successfully connected to DaVinci Resolve.
+```
+
+On the **free** edition it starts but logs (without crashing):
+
+```
+... - ResolveAPI - ERROR - DaVinci Resolve scripting could not be initialized.
+    External scripting requires DaVinci Resolve Studio; the free edition does not support it.
+```
+
+### macOS / Linux
+
+The DLL preload is Windows-specific and is skipped automatically. Ensure a python.org
+Python 3.10/3.11, install the same dependencies, and run `python server.py`. The scripting
+modules are found automatically; you can override the location with `RESOLVE_SCRIPT_PATH`.
+
+For example, create a regular virtual environment on macOS with:
 
 ```bash
-# Using pip (ensure pip is for Python 3.10+)
-pip install uv
-
-# Using Homebrew (macOS)
-brew install uv
-
-# Using Conda
-conda install -c conda-forge uv
+/usr/local/bin/python3.11 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
+./.venv/bin/python server.py
 ```
 
-Verify installation:
+On Apple Silicon, adjust the Python path if your python.org installation is elsewhere.
 
-```bash
-uv --version
-```
+## Claude Desktop Integration
 
-### 2. Create a Virtual Environment
-
-Create and activate a virtual environment to isolate dependencies:
-
-```bash
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
-
-### 3. Install the DaVinci Resolve MCP Server
-
-Install the server and its dependencies from the project directory:
-
-```bash
-# From the project directory (editable install for development)
-uv install -e .
-
-# Or directly from GitHub (replace with your repo URL)
-uv install git+https://github.com/yourusername/davinci-resolve-mcp.git
-```
-
-### 4. Install Dependencies
-
-Ensure `requirements.txt` includes:
-
-```
-mcp
-pydantic
-```
-
-Install them:
-
-```bash
-uv install -r requirements.txt
-```
-
-## Configuration
-
-Before running the server, ensure:
-
-1. DaVinci Resolve Studio is running.
-2. Python can access the DaVinci Resolve scripting API (handled automatically by `ResolveAPI` in most cases).
-
-### API Access Configuration
-
-The `ResolveAPI` class dynamically locates the scripting API, but you may need to configure it manually in some cases:
-
-#### macOS
-
-The API is typically available at:
-
-- `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules`
-- Or user-specific: `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules`
-
-No additional setup is usually required.
-
-#### Windows
-
-Add the API path if not detected:
-
-```python
-import sys
-sys.path.append("C:\\ProgramData\\Blackmagic Design\\DaVinci Resolve\\Support\\Developer\\Scripting\\Modules")
-```
-
-#### Linux
-
-Set the environment variable:
-
-```bash
-export PYTHONPATH=$PYTHONPATH:/opt/resolve/Developer/Scripting/Modules
-```
-
-Alternatively, set a custom path via an environment variable:
-
-```bash
-export RESOLVE_SCRIPT_PATH="/custom/path/to/scripting/modules"
-```
-
-## Running the Server
-
-Start the MCP server:
-
-```bash
-# Run directly with Python
-python -m resolve_mcp.server
-
-# Or with uv
-uv run resolve_mcp/server.py
-```
-
-The server will launch and connect to DaVinci Resolve, logging output like:
-
-```
-2025-03-19 ... - resolve_mcp - INFO - Successfully connected to DaVinci Resolve.
-```
-
-### Claude Integration Configuration
-
-To integrate with Claude Desktop, update your `claude_desktop_config.json` (e.g., `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+Point Claude Desktop at the launcher via `claude_desktop_config.json`
+(`%APPDATA%\Claude\claude_desktop_config.json` on Windows):
 
 ```json
 {
   "mcpServers": {
     "davinci-resolve": {
-      "command": "/path/to/uv",
+      "command": "powershell",
       "args": [
-        "run",
-        "--directory",
-        "/path/to/davinci-resolve-mcp",
-        "resolve_mcp/server.py"
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", "C:\\path\\to\\davinci-resolve-mcp\\run_server.ps1"
       ]
     }
   }
 }
 ```
 
-- Replace `/path/to/uv` with the path to your `uv` executable (e.g., `/usr/local/bin/uv` or `C:\Users\username\.cargo\bin\uv.exe`).
-- Replace `/path/to/davinci-resolve-mcp` with the absolute path to your project directory.
+Replace the path with the absolute path to this project. Restart Claude Desktop and look
+for the tools/hammer icon to confirm the server loaded.
 
-Restart Claude Desktop to enable the server. Look for a hammer icon in the input box to confirm integration.
+On macOS, use the virtual environment's Python directly instead of the PowerShell
+launcher. The configuration file is
+`~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "davinci-resolve": {
+      "command": "/absolute/path/to/davinci-resolve-mcp/.venv/bin/python",
+      "args": [
+        "/absolute/path/to/davinci-resolve-mcp/server.py"
+      ]
+    }
+  }
+}
+```
 
 ## Troubleshooting
 
-### Connection Issues
+### "Failed to connect" / "requires DaVinci Resolve Studio"
 
-If the server fails to connect:
+External scripting is a **Studio-only** feature. On the free edition the scripting library
+cannot be initialized from an external process, and the server will run in a disconnected
+state. There is no software workaround — Studio is required.
 
-1. Ensure DaVinci Resolve Studio is running.
-2. Check Resolve’s preferences to confirm scripting is enabled.
-3. Verify Python version compatibility (3.10+ recommended):
-   ```bash
-   python --version
-   ```
-4. Confirm API paths are accessible (see logs in `~/Library/Logs/Claude/mcp*.log` on macOS or `%userprofile%\AppData\Roaming\Claude\Logs\` on Windows).
+### The process crashes on startup (access violation `0xC0000005`)
+
+Resolve's `fusionscript.dll` loads a Python 3 runtime when the scripting module is
+imported. It chooses which one from the `FUSION_PYTHON3_HOME` environment variable and,
+**if that is unset, from the Windows registry** (`HKCU`/`HKLM\SOFTWARE\Python\PythonCore`).
+On a machine with several Pythons registered — commonly **Anaconda** (`python312.dll`) or a
+**python.org 3.13** — that fallback picks a *foreign* runtime, loads it into the 3.10
+interpreter, and the process dies with an access violation.
+
+The fix is to set `FUSION_PYTHON3_HOME` to this project's Python 3.10. Both `run_server.ps1`
+and `resolve_env.py` do this for you (and additionally preload the correct `python3.dll` and
+probe the scripting import in a subprocess so a crash there cannot take down the server), so
+**always launch via `run_server.ps1`**. Note that `PATH` isolation alone is *not* enough —
+the registry fallback bypasses `PATH` — which is why `FUSION_PYTHON3_HOME` is required.
+
+### It loads but says `scriptapp('Resolve') returned None`
+
+The scripting module imported successfully but no live Resolve object was returned. Either
+Resolve isn't running, or external scripting is disabled. In Resolve, open
+**Preferences → System → General** and set **"External scripting using"** to **Local**, then
+restart Resolve. Remember that external scripting also **requires DaVinci Resolve Studio** —
+on the free edition this will remain `None`.
+
+### `import imp` / `ModuleNotFoundError` at startup
+
+You are on Python 3.12 or newer (the `imp` module was removed). Recreate the venv with
+Python 3.10 or 3.11 as shown in [Setup](#setup-windows).
 
 ### Dependency Issues
 
-If modules like `mcp` or `pydantic` are missing:
+If `mcp` or `pydantic` are missing, install them into the venv:
 
-```bash
-uv install mcp pydantic
-```
-
-### Python Version Compatibility
-
-Switch to a compatible version with `pyenv` if needed:
-
-```bash
-pyenv install 3.10.12
-pyenv shell 3.10.12
-uv install -r requirements.txt
+```powershell
+.\.venv310\Scripts\python.exe -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
 ```
 
 ## Available Tools and Resources
@@ -275,21 +251,10 @@ To contribute:
 
 1. Fork the repository: `https://github.com/yourusername/davinci-resolve-mcp`
 2. Create a feature branch: `git checkout -b feature-name`
-3. Install dependencies: `uv install -e .`
-4. Make changes and test: `uv run resolve_mcp/server.py`
+3. Set up the venv and dependencies (see [Setup](#setup-windows)).
+4. Make changes and test: `.\run_server.ps1`
 5. Submit a pull request.
 
 ## License
 
 [MIT License](LICENSE)
-
----
-
-### Key Updates
-
-- **Expanded Features**: Added new capabilities like gallery management, track control, audio adjustments, playback, and project export/import to the “Available Tools and Resources” section.
-- **Installation Clarity**: Improved `uv` instructions with verification steps and explicit paths for Claude integration.
-- **Troubleshooting**: Enhanced with specific commands and log locations for debugging.
-- **Configuration**: Updated API access notes to reflect the dynamic path handling in `ResolveAPI`.
-
-This README now fully aligns with the enhanced `ResolveAPI` class, providing a comprehensive guide for users and developers. Let me know if you’d like further adjustments!

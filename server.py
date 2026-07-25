@@ -9,6 +9,10 @@ import logging
 import sys
 from typing import List, Dict, Any, Optional
 
+# Prepare the Resolve scripting environment (DLL preload + RESOLVE_SCRIPT_* paths)
+# BEFORE importing resolve_api, which loads Resolve's native scripting library.
+import resolve_env  # noqa: F401  (import for its bootstrap side effects)
+
 # Configure logging with timestamp, name, level, and message format
 logging.basicConfig(
     level=logging.INFO,
