@@ -1,50 +1,71 @@
 # DaVinci Resolve MCP Server
 
-A Model Context Protocol (MCP) server that enables AI assistants like Claude to interact with DaVinci Resolve Studio, providing advanced control over editing, color grading, audio, and more.
+Control DaVinci Resolve Studio from MCP clients such as Claude Desktop.
 
-## Overview
+This project exposes Resolve projects, timelines, media, Fusion, color, audio,
+playback, and rendering operations through a local
+[Model Context Protocol](https://modelcontextprotocol.io/) server.
 
-This server implements the MCP protocol to create a bridge between AI assistants and DaVinci Resolve. It allows AI assistants to:
+## What it does
 
-- Create, load, and manage DaVinci Resolve projects
-- Manipulate timelines, tracks, and clips
-- Import and organize media files
-- Access and modify Fusion compositions
-- Perform color grading and manage stills in the Gallery
-- Adjust audio settings and control playback
-- Navigate between Resolve pages (Media, Edit, Fusion, Color, Fairlight, Deliver)
-- Execute custom Python and Lua scripts
-- Export and import projects
+The server provides:
+
+- 32 MCP tools for editing and controlling Resolve;
+- 6 read-only MCP resources describing the current Resolve state;
+- automatic discovery of the DaVinci Resolve scripting API on Windows, macOS,
+  and Linux;
+- a protected native-module probe, so a broken `fusionscript` import does not
+  crash the MCP server;
+- Windows runtime isolation to prevent Resolve from loading an incompatible
+  Python DLL.
+
+Example requests from an MCP client:
+
+> Create a project called “Product Launch”.
+
+> Import these three clips and create a timeline called “Rough Cut”.
+
+> Add a blue marker at frame 240 with the note “Review transition”.
+
+> Save the current grade as a still in the “Approved Looks” album.
 
 ## Requirements
 
-- **DaVinci Resolve _Studio_ 18.0 or newer.** External scripting (which this server
-  relies on) is a Studio-only feature. The **free** edition does not expose the
-  external scripting API — the server will start but report that it cannot connect.
-- **A regular python.org Python 3.10 or 3.11 (64-bit).** Resolve's scripting module
-  does `import imp`, which was removed in Python 3.12, so **3.12+ will not work**.
-  Do **not** use `uv`-managed Python: its standalone builds crash when loading
-  Resolve's native `fusionscript.dll`. See [Setup](#setup-windows) below.
-- Access to the DaVinci Resolve scripting API (installed with Resolve).
+- **DaVinci Resolve Studio 18 or newer.** External scripting must be enabled.
+- **64-bit CPython 3.10 or 3.11.** Resolve's scripting module still imports
+  `imp`, which was removed from Python 3.12.
+- The DaVinci Resolve scripting API installed with Resolve.
+- An MCP client such as Claude Desktop.
 
-## Setup (Windows)
+Before starting the server, open Resolve and set:
 
-> **Why not `uv`?** Two reasons: `uv` defaults to Python 3.13 (fails on `import imp`),
-> and even when pinned to 3.10/3.11 its *standalone* Python build crashes when Resolve's
-> native `fusionscript.dll` is loaded. Use a normal python.org install with a plain venv.
+**Preferences → System → General → External scripting using → Local**
 
-### 1. Install a compatible Python
+The free edition of Resolve does not expose the external scripting connection
+used by this server. The MCP process can start, but it will remain disconnected.
 
-Install **python.org Python 3.10 (64-bit)** — for example with winget:
+## Installation
+
+Clone the repository first:
+
+```bash
+git clone https://github.com/Tooflex/davinci-resolve-mcp.git
+cd davinci-resolve-mcp
+```
+
+### Windows
+
+Use a regular 64-bit Python from python.org. Do not use a `uv`-managed standalone
+Python on Windows: Resolve's `fusionscript.dll` is known to crash with those
+builds.
+
+Install Python 3.10:
 
 ```powershell
 winget install --id Python.Python.3.10 -e
 ```
 
-### 2. Create the virtual environment and install dependencies
-
-From the project directory, create the venv with that interpreter (this repo uses
-`.venv310`) and install the dependencies:
+Create the environment and install the dependencies:
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe" -m venv .venv310
@@ -52,55 +73,61 @@ From the project directory, create the venv with that interpreter (this repo use
 .\.venv310\Scripts\python.exe -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
 ```
 
-### 3. Run the server
-
-Use the provided launcher, which sets up a clean environment for you:
+Start the server through the Windows launcher:
 
 ```powershell
 .\run_server.ps1
 ```
 
-`run_server.ps1` builds a minimal `PATH` (exposing only this project's Python 3.10 plus
-the Windows system directories) and sets the `RESOLVE_SCRIPT_API` / `RESOLVE_SCRIPT_LIB`
-variables. `resolve_env.py` additionally preloads the matching `python3.dll` from inside
-the process. Both are needed to avoid the DLL conflict described in
-[Troubleshooting](#troubleshooting).
+Always use `run_server.ps1` on Windows. It pins Resolve to the correct Python
+runtime, isolates `PATH`, and configures the scripting API paths before starting
+the server.
 
-On DaVinci Resolve **Studio** (running), you should see:
+### macOS
 
-```
-... - ResolveAPI - INFO - Connected to Resolve using ...
-... - resolve_mcp - INFO - Successfully connected to DaVinci Resolve.
-```
-
-On the **free** edition it starts but logs (without crashing):
-
-```
-... - ResolveAPI - ERROR - DaVinci Resolve scripting could not be initialized.
-    External scripting requires DaVinci Resolve Studio; the free edition does not support it.
-```
-
-### macOS / Linux
-
-The DLL preload is Windows-specific and is skipped automatically. Ensure a python.org
-Python 3.10/3.11, install the same dependencies, and run `python server.py`. The scripting
-modules are found automatically; you can override the location with `RESOLVE_SCRIPT_PATH`.
-
-For example, create a regular virtual environment on macOS with:
+Create a virtual environment with CPython 3.10 or 3.11:
 
 ```bash
-/usr/local/bin/python3.11 -m venv .venv
+python3.11 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
+```
+
+Start the server:
+
+```bash
+./.venv/bin/python server.py
+```
+
+The standard Resolve API locations are detected automatically:
+
+- `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules`
+- `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules`
+
+Both Intel and Apple Silicon Macs use the same Resolve application and scripting
+paths.
+
+### Linux
+
+Create the environment and install the dependencies:
+
+```bash
+python3.11 -m venv .venv
 ./.venv/bin/python -m pip install --upgrade pip
 ./.venv/bin/python -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
 ./.venv/bin/python server.py
 ```
 
-On Apple Silicon, adjust the Python path if your python.org installation is elsewhere.
+The default Linux scripting path is `/opt/resolve/Developer/Scripting/Modules`.
 
-## Claude Desktop Integration
+## MCP client configuration
 
-Point Claude Desktop at the launcher via `claude_desktop_config.json`
-(`%APPDATA%\Claude\claude_desktop_config.json` on Windows):
+The server uses the MCP standard I/O transport. Configure your client to launch
+the server as a local process.
+
+### Claude Desktop on Windows
+
+Edit `%APPDATA%\Claude\claude_desktop_config.json`:
 
 ```json
 {
@@ -109,20 +136,19 @@ Point Claude Desktop at the launcher via `claude_desktop_config.json`
       "command": "powershell",
       "args": [
         "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-File", "C:\\path\\to\\davinci-resolve-mcp\\run_server.ps1"
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "C:\\absolute\\path\\to\\davinci-resolve-mcp\\run_server.ps1"
       ]
     }
   }
 }
 ```
 
-Replace the path with the absolute path to this project. Restart Claude Desktop and look
-for the tools/hammer icon to confirm the server loaded.
+### Claude Desktop on macOS
 
-On macOS, use the virtual environment's Python directly instead of the PowerShell
-launcher. The configuration file is
-`~/Library/Application Support/Claude/claude_desktop_config.json`:
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
@@ -137,124 +163,182 @@ launcher. The configuration file is
 }
 ```
 
-## Troubleshooting
+### Other MCP clients
 
-### "Failed to connect" / "requires DaVinci Resolve Studio"
+Use the same command and argument pairs shown above:
 
-External scripting is a **Studio-only** feature. On the free edition the scripting library
-cannot be initialized from an external process, and the server will run in a disconnected
-state. There is no software workaround — Studio is required.
+- Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File <run_server.ps1>`
+- macOS/Linux: `<venv-python> <server.py>`
 
-### The process crashes on startup (access violation `0xC0000005`)
+Use absolute paths. Keep Resolve running, restart the MCP client after changing
+its configuration, and then check that the `davinci-resolve` tools are available.
 
-Resolve's `fusionscript.dll` loads a Python 3 runtime when the scripting module is
-imported. It chooses which one from the `FUSION_PYTHON3_HOME` environment variable and,
-**if that is unset, from the Windows registry** (`HKCU`/`HKLM\SOFTWARE\Python\PythonCore`).
-On a machine with several Pythons registered — commonly **Anaconda** (`python312.dll`) or a
-**python.org 3.13** — that fallback picks a *foreign* runtime, loads it into the 3.10
-interpreter, and the process dies with an access violation.
+## Available MCP resources
 
-The fix is to set `FUSION_PYTHON3_HOME` to this project's Python 3.10. Both `run_server.ps1`
-and `resolve_env.py` do this for you (and additionally preload the correct `python3.dll` and
-probe the scripting import in a subprocess so a crash there cannot take down the server), so
-**always launch via `run_server.ps1`**. Note that `PATH` isolation alone is *not* enough —
-the registry fallback bypasses `PATH` — which is why `FUSION_PYTHON3_HOME` is required.
+| URI | Description |
+| --- | --- |
+| `system://status` | Connection, project, and timeline status |
+| `project://current` | Current project name and timeline count |
+| `timeline://current` | Current timeline name, duration, and video-track count |
+| `timeline://items` | Items on the first video track |
+| `mediapool://current` | Current media-pool folder and clip count |
+| `gallery://albums` | Gallery album names |
 
-### It loads but says `scriptapp('Resolve') returned None`
+## Available MCP tools
 
-The scripting module imported successfully but no live Resolve object was returned. Either
-Resolve isn't running, or external scripting is disabled. In Resolve, open
-**Preferences → System → General** and set **"External scripting using"** to **Local**, then
-restart Resolve. Remember that external scripting also **requires DaVinci Resolve Studio** —
-on the free edition this will remain `None`.
+### Projects and navigation
 
-### `import imp` / `ModuleNotFoundError` at startup
+| Tool | Operation |
+| --- | --- |
+| `refresh` | Refresh cached Resolve objects |
+| `create_project` | Create a project |
+| `load_project` | Open an existing project |
+| `save_project` | Save the current project |
+| `export_project` | Export a project to a file |
+| `import_project` | Import a project file |
+| `set_project_setting` | Change a project setting |
+| `open_page` | Open Media, Edit, Fusion, Color, Fairlight, or Deliver |
 
-You are on Python 3.12 or newer (the `imp` module was removed). Recreate the venv with
-Python 3.10 or 3.11 as shown in [Setup](#setup-windows).
+### Media and timelines
 
-### Dependency Issues
+| Tool | Operation |
+| --- | --- |
+| `import_media` | Import files into the media pool |
+| `add_sub_folder` | Add a media-pool subfolder |
+| `create_timeline` | Create an empty timeline |
+| `set_current_timeline` | Select a timeline by its 1-based index |
+| `append_to_timeline` | Append named clips |
+| `create_timeline_from_clips` | Build a timeline from named clips |
+| `import_timeline_from_file` | Import a timeline such as XML or EDL |
+| `set_clip_property` | Change a timeline clip property |
+| `add_timeline_marker` | Add a marker at a frame |
+| `add_track` | Add a video, audio, or subtitle track |
+| `set_track_name` | Rename a track |
+| `enable_track` | Enable or disable a track |
+| `set_current_version` | Select a color or Fusion clip version |
 
-If `mcp` or `pydantic` are missing, install them into the venv:
+### Fusion and color
 
-```powershell
-.\.venv310\Scripts\python.exe -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
+| Tool | Operation |
+| --- | --- |
+| `execute_lua` | Execute Lua in Resolve's Fusion environment |
+| `create_fusion_node` | Add a node to the current Fusion composition |
+| `add_color_node` | Add a color node to the current clip |
+| `save_still` | Save the current grade to a gallery album |
+| `apply_still` | Apply a named still to a clip |
+
+`execute_lua` runs code inside Resolve. Only execute scripts from sources you
+trust.
+
+### Audio, playback, and rendering
+
+| Tool | Operation |
+| --- | --- |
+| `set_audio_volume` | Set a named clip's audio volume |
+| `set_track_volume` | Set an audio-track volume |
+| `play_timeline` | Start playback |
+| `stop_timeline` | Stop playback |
+| `set_playhead_position` | Move the playhead to a frame |
+| `start_project_render` | Start a render with an optional preset and output path |
+
+## How the connection bootstrap works
+
+`server.py` imports `resolve_env.py` before creating `ResolveAPI`.
+
+On every platform, the bootstrap:
+
+1. selects the Resolve scripting API and native library paths;
+2. propagates the selected Modules directory to child processes;
+3. probes `DaVinciResolveScript` in a disposable subprocess;
+4. imports the native library in the MCP process only when the probe exits
+   safely.
+
+On Windows, Resolve may otherwise select a Python runtime from the Windows
+registry and load a foreign `python3xx.dll` into the current process.
+`FUSION_PYTHON3_HOME`, DLL preloading, and the isolated launcher prevent that
+native crash.
+
+## Environment overrides
+
+Defaults work for standard Resolve installations. For a custom installation,
+set these variables before starting the server:
+
+| Variable | Purpose |
+| --- | --- |
+| `RESOLVE_SCRIPT_PATH` | Directory containing `DaVinciResolveScript.py` |
+| `RESOLVE_SCRIPT_API` | Root of Resolve's `Developer/Scripting` directory |
+| `RESOLVE_SCRIPT_LIB` | Absolute path to `fusionscript.dll` or `fusionscript.so` |
+| `FUSION_PYTHON3_HOME` | Windows Python runtime Resolve must load |
+
+Example:
+
+```bash
+export RESOLVE_SCRIPT_PATH="/custom/Developer/Scripting/Modules"
+export RESOLVE_SCRIPT_API="/custom/Developer/Scripting"
+export RESOLVE_SCRIPT_LIB="/custom/Fusion/fusionscript.so"
+./.venv/bin/python server.py
 ```
 
-## Available Tools and Resources
+## Troubleshooting
 
-The MCP server provides extensive functionality through the `ResolveAPI` class:
+### The server starts but is not connected
 
-### Project Management
+- Confirm that DaVinci Resolve Studio is running.
+- Set **External scripting using** to **Local**, then restart Resolve.
+- Confirm that the configured Python is version 3.10 or 3.11.
+- Check that the Resolve scripting Modules directory exists.
 
-- Create new projects (`create_project`)
-- Load existing projects (`load_project`)
-- Save current projects (`save_project`)
-- Export/import projects (`export_project`, `import_project`)
-- Get/set project settings (`get_project_settings`, `set_project_setting`)
+The server intentionally remains available in a disconnected state when it
+cannot initialize Resolve.
 
-### Timeline Operations
+### `scriptapp('Resolve') returned None`
 
-- Create new timelines (`create_timeline`)
-- Set/get current timeline (`set_current_timeline`, `get_current_timeline`)
-- Add/manage tracks (`add_track`, `set_track_name`, `enable_track`)
-- Get timeline items (`get_timeline_items`)
-- Set clip properties (`set_clip_property`)
-- Add markers (`add_timeline_marker`)
+The native module loaded, but it could not obtain a running Resolve object.
+Resolve is either closed, external scripting is disabled, or the installed
+edition does not support external scripting.
 
-### Media Management
+### `ModuleNotFoundError: No module named 'imp'`
 
-- Import media files (`add_items_to_media_pool`)
-- Create media pool folders (`add_sub_folder`)
-- Create timelines from clips (`create_timeline_from_clips`)
-- Get clip metadata (`get_clip_metadata`)
+Python 3.12 or newer is being used. Recreate the virtual environment with Python
+3.10 or 3.11.
 
-### Fusion Integration
+### Windows access violation `0xC0000005`
 
-- Add Fusion compositions to clips (`create_fusion_node`)
-- Create/manage Fusion nodes (`create_fusion_node`)
-- Access current composition (`get_current_comp`)
+Launch the project through `run_server.ps1`, not with `python server.py`.
 
-### Color Grading
+The crash occurs when `fusionscript.dll` loads an incompatible Python runtime,
+often from another python.org or Anaconda installation registered on the
+machine. The launcher sets `FUSION_PYTHON3_HOME` and isolates DLL resolution.
 
-- Get/add color nodes (`get_color_page_nodes`, `add_color_node`)
-- Save/apply stills (`save_still`, `apply_still`)
-- Manage gallery albums (`get_gallery_albums`)
+### `No valid Resolve scripting module path found`
 
-### Audio Control
+Set `RESOLVE_SCRIPT_PATH` to the directory containing
+`DaVinciResolveScript.py`. If the native library is also in a non-standard
+location, set `RESOLVE_SCRIPT_LIB`.
 
-- Get/set clip audio volume (`get_audio_volume`, `set_audio_volume`)
-- Set track volume (`set_track_volume`)
+### Missing MCP dependencies
 
-### Playback Control
+Install the dependencies into the same interpreter configured in the MCP client:
 
-- Play/stop playback (`play`, `stop`)
-- Get/set playhead position (`get_current_timecode`, `set_playhead_position`)
-
-### Rendering
-
-- Start rendering (`start_render`)
-- Get render status (`get_render_status`)
-
-### Navigation
-
-- Open specific pages (`open_page`: Media, Edit, Fusion, Color, Fairlight, Deliver)
-
-### Advanced Operations
-
-- Execute custom Python code (`execute_python`)
-- Execute Lua scripts in Fusion (`execute_lua`)
+```bash
+python -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
+```
 
 ## Development
 
-To contribute:
+Run the unit tests:
 
-1. Fork the repository: `https://github.com/yourusername/davinci-resolve-mcp`
-2. Create a feature branch: `git checkout -b feature-name`
-3. Set up the venv and dependencies (see [Setup](#setup-windows)).
-4. Make changes and test: `.\run_server.ps1`
-5. Submit a pull request.
+```bash
+python -m unittest discover -s tests -v
+```
 
-## License
+Run syntax checks:
 
-[MIT License](LICENSE)
+```bash
+python -m py_compile server.py resolve_api.py resolve_env.py
+```
+
+The GitHub Actions workflow runs the unit tests on Python 3.10 and 3.11 across
+Windows, macOS, and Linux.
+
+Contributions should keep platform-specific bootstrap behavior covered by tests.
