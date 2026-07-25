@@ -477,7 +477,7 @@ class ResolveAPI:
         Args:
             timeline_name (str): Name of the new timeline.
             clips (List[Any]): List of media pool items to include.
- ACC       Returns:
+        Returns:
             Any: Created timeline object or None if media pool is unavailable.
         """
         if not self.media_pool:
@@ -512,42 +512,40 @@ class ResolveAPI:
             return None
         return self.fusion.Execute(script)
 
-def create_fusion_node(self, node_type: str, inputs: Dict[str, Any] = None) -> Any:
-    """
-    Create a new node in the current Fusion composition.
-    
-    Args:
-        node_type (str): Type of node to create (e.g., "Blur", "ColorCorrector").
-        inputs (Dict[str, Any], optional): Dictionary of input parameters for the node.
-    
-    Returns:
-        Any: Created node object or None if Fusion or composition is unavailable.
-    """
-    try:
-        comp = fusion.GetCurrentComp()
+    def create_fusion_node(
+        self,
+        comp,
+        node_type: str,
+        inputs: Dict[str, Any] = None,
+    ) -> Any:
+        """
+        Create a new node in a Fusion composition.
+
+        Args:
+            comp: Fusion composition that receives the node.
+            node_type (str): Type of node to create (e.g. "Blur").
+            inputs (Dict[str, Any], optional): Input values to set on the node.
+
+        Returns:
+            Any: Created node object, or None if creation fails.
+        """
         if not comp:
-            print("No Fusion composition found.")
+            logger.warning("No Fusion composition available")
             return None
-            
-        # Include position parameters (x, y)
-        node = comp.AddTool(node_type, 0, 0)
-        
-        if not node:
-            print(f"Error creating {node_type} node.")
-            return None
-            
-        # Set input parameters if provided
-        if inputs and node:
-            for key, value in inputs.items():
-                # Use SetInput method instead of dictionary-style assignment
+
+        try:
+            node = comp.AddTool(node_type, 0, 0)
+            if not node:
+                logger.error(f"Failed to create Fusion node {node_type}")
+                return None
+
+            for key, value in (inputs or {}).items():
                 node.SetInput(key, value)
-                
-        print(f"{node_type} node created successfully.")
-        return node
-        
-    except Exception as e:
-        print(f"Error creating Fusion node: {e}")
-        return None
+
+            return node
+        except Exception as e:
+            logger.error(f"Failed to create Fusion node {node_type}: {e}")
+            return None
 
     def get_current_comp(self) -> Any:
         """

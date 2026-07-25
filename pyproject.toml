@@ -1,10 +1,20 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "davinci-resolve-mcp"
 version = "0.1.0"
-description = "Add your description here"
+description = "MCP server for controlling DaVinci Resolve Studio"
 readme = "README.md"
 requires-python = ">=3.10,<3.12"
 dependencies = [
     "mcp[cli]>=1.4.1",
     "pydantic>=2.10.6",
 ]
+
+[project.scripts]
+davinci-resolve-mcp = "server:main"
+
+[tool.setuptools]
+py-modules = ["server", "resolve_api", "resolve_env"]

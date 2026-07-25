@@ -70,7 +70,7 @@ Create the environment and install the dependencies:
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe" -m venv .venv310
 .\.venv310\Scripts\python.exe -m pip install --upgrade pip
-.\.venv310\Scripts\python.exe -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
+.\.venv310\Scripts\python.exe -m pip install -e .
 ```
 
 Start the server through the Windows launcher:
@@ -90,13 +90,13 @@ Create a virtual environment with CPython 3.10 or 3.11:
 ```bash
 python3.11 -m venv .venv
 ./.venv/bin/python -m pip install --upgrade pip
-./.venv/bin/python -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
+./.venv/bin/python -m pip install -e .
 ```
 
 Start the server:
 
 ```bash
-./.venv/bin/python server.py
+./.venv/bin/davinci-resolve-mcp
 ```
 
 The standard Resolve API locations are detected automatically:
@@ -114,11 +114,21 @@ Create the environment and install the dependencies:
 ```bash
 python3.11 -m venv .venv
 ./.venv/bin/python -m pip install --upgrade pip
-./.venv/bin/python -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
-./.venv/bin/python server.py
+./.venv/bin/python -m pip install -e .
+./.venv/bin/davinci-resolve-mcp
 ```
 
 The default Linux scripting path is `/opt/resolve/Developer/Scripting/Modules`.
+
+If you use `uv` as an installer, target an existing compatible CPython
+environment explicitly:
+
+```bash
+uv pip install --python .venv/bin/python -e .
+```
+
+On Windows, continue to use the regular python.org environment and
+`run_server.ps1`; do not let `uv` provision a standalone Python runtime.
 
 ## MCP client configuration
 
@@ -154,10 +164,8 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "davinci-resolve": {
-      "command": "/absolute/path/to/davinci-resolve-mcp/.venv/bin/python",
-      "args": [
-        "/absolute/path/to/davinci-resolve-mcp/server.py"
-      ]
+      "command": "/absolute/path/to/davinci-resolve-mcp/.venv/bin/davinci-resolve-mcp",
+      "args": []
     }
   }
 }
@@ -168,7 +176,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 Use the same command and argument pairs shown above:
 
 - Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File <run_server.ps1>`
-- macOS/Linux: `<venv-python> <server.py>`
+- macOS/Linux: `<venv>/bin/davinci-resolve-mcp`
 
 Use absolute paths. Keep Resolve running, restart the MCP client after changing
 its configuration, and then check that the `davinci-resolve` tools are available.
@@ -276,7 +284,7 @@ Example:
 export RESOLVE_SCRIPT_PATH="/custom/Developer/Scripting/Modules"
 export RESOLVE_SCRIPT_API="/custom/Developer/Scripting"
 export RESOLVE_SCRIPT_LIB="/custom/Fusion/fusionscript.so"
-./.venv/bin/python server.py
+./.venv/bin/davinci-resolve-mcp
 ```
 
 ## Troubleshooting
@@ -318,13 +326,19 @@ location, set `RESOLVE_SCRIPT_LIB`.
 
 ### Missing MCP dependencies
 
-Install the dependencies into the same interpreter configured in the MCP client:
+Install the project into the same interpreter configured in the MCP client:
 
 ```bash
-python -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
+python -m pip install -e .
 ```
 
 ## Development
+
+Install the project in editable mode:
+
+```bash
+python -m pip install -e .
+```
 
 Run the unit tests:
 
