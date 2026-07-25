@@ -41,6 +41,8 @@ class ResolveAPI:
         """
         custom_path = os.environ.get("RESOLVE_SCRIPT_PATH")  # Check for user-defined path
         if custom_path and os.path.exists(custom_path):
+            if custom_path not in sys.path:
+                sys.path.append(custom_path)
             return custom_path
         # Default paths for Resolve scripting module by OS
         base_paths = {
@@ -72,7 +74,7 @@ class ResolveAPI:
         # notably the free edition, which restricts external scripting to Studio.
         # Probe it in a subprocess first so we degrade gracefully instead of dying.
         import resolve_env
-        if not resolve_env.scripting_safe_to_import():
+        if not resolve_env.scripting_safe_to_import(script_path):
             logger.error(
                 "DaVinci Resolve scripting could not be initialized. External "
                 "scripting requires DaVinci Resolve Studio; the free edition does "

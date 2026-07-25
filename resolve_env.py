@@ -6,7 +6,7 @@ Why this module exists
 Resolve's ``fusionscript`` native library loads a Python 3 runtime at import time
 to expose its scripting API. To decide *which* Python, it reads the environment
 variable ``FUSION_PYTHON3_HOME`` and, only if that is unset, falls back to the
-Windows registry (``HKCU``/``HKLM\SOFTWARE\Python\PythonCore``). On a machine with
+Windows registry (``HKCU``/``HKLM\\SOFTWARE\\Python\\PythonCore``). On a machine with
 several Pythons registered (e.g. an Anaconda 3.12), that fallback can pick a
 *foreign* runtime and load its ``python3xx.dll`` into this 3.10 process, which
 hard-crashes with an access violation (0xC0000005) the moment
@@ -25,6 +25,7 @@ anything that pulls in ``DaVinciResolveScript`` / ``resolve_api``.
 import os
 import subprocess
 import sys
+from typing import Optional
 
 # Cache for the one-time "is it safe to import the scripting module?" probe.
 _safe_to_import = None
@@ -113,7 +114,7 @@ def _preload_matching_python_dll() -> None:
                 pass
 
 
-def scripting_safe_to_import() -> bool:
+def scripting_safe_to_import(module_path: Optional[str] = None) -> bool:
     """
     Return True if importing ``DaVinciResolveScript`` in *this* process is safe.
 
@@ -122,6 +123,11 @@ def scripting_safe_to_import() -> bool:
     the free edition of DaVinci Resolve, which gates external scripting to Studio.
     We can't catch a native crash, so we reproduce the import in a throwaway
     subprocess and treat a crash there as "not safe".
+
+    ``module_path`` is the directory selected by ``ResolveAPI``. Passing it to the
+    child is required for macOS user-local installations and
+    ``RESOLVE_SCRIPT_PATH`` overrides, which may not be present in the inherited
+    ``PYTHONPATH``.
 
     Exit-code contract of the probe:
         0  -> imported and scriptapp() returned a live object (connected)
@@ -138,10 +144,11 @@ def scripting_safe_to_import() -> bool:
         "sys.exit(0 if d.scriptapp('Resolve') else 10)\n"
     )
     env = os.environ.copy()
-    # Ensure the child can import this module (resolve_env) and the Modules dir.
+    # Ensure the child can import this module and the exact Modules dir selected
+    # by ResolveAPI. The latter may be a macOS user-local or custom path.
     here = os.path.dirname(os.path.abspath(__file__))
     env["PYTHONPATH"] = os.pathsep.join(
-        p for p in (here, env.get("PYTHONPATH", "")) if p
+        p for p in (here, module_path, env.get("PYTHONPATH", "")) if p
     )
     try:
         result = subprocess.run(

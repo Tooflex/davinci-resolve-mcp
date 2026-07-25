@@ -86,6 +86,17 @@ The DLL preload is Windows-specific and is skipped automatically. Ensure a pytho
 Python 3.10/3.11, install the same dependencies, and run `python server.py`. The scripting
 modules are found automatically; you can override the location with `RESOLVE_SCRIPT_PATH`.
 
+For example, create a regular virtual environment on macOS with:
+
+```bash
+/usr/local/bin/python3.11 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install "mcp[cli]>=1.4.1" "pydantic>=2.10.6"
+./.venv/bin/python server.py
+```
+
+On Apple Silicon, adjust the Python path if your python.org installation is elsewhere.
+
 ## Claude Desktop Integration
 
 Point Claude Desktop at the launcher via `claude_desktop_config.json`
@@ -108,6 +119,23 @@ Point Claude Desktop at the launcher via `claude_desktop_config.json`
 
 Replace the path with the absolute path to this project. Restart Claude Desktop and look
 for the tools/hammer icon to confirm the server loaded.
+
+On macOS, use the virtual environment's Python directly instead of the PowerShell
+launcher. The configuration file is
+`~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "davinci-resolve": {
+      "command": "/absolute/path/to/davinci-resolve-mcp/.venv/bin/python",
+      "args": [
+        "/absolute/path/to/davinci-resolve-mcp/server.py"
+      ]
+    }
+  }
+}
+```
 
 ## Troubleshooting
 
